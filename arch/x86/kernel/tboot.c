@@ -226,6 +226,8 @@ static int tboot_setup_sleep(void)
 void tboot_shutdown(u32 shutdown_type)
 {
 	void (*shutdown)(void);
+	unsigned long cr4;
+    u32 bitmask = 0;
 
 	if (!tboot_enabled())
 		return;
@@ -247,12 +249,33 @@ void tboot_shutdown(u32 shutdown_type)
 
 	switch_to_tboot_pt();
 
-	shutdown = (void(*)(void))(unsigned long)tboot->shutdown_entry;
-	shutdown();
+    /*
+     * Toggle off CET, SMEP, SMAP, LASS while we call shutdown_entry in
+     * tboot.  CET, if enabled, will trigger an invalid opcode here unless
+     * tboot has been built with extra flags.  LASS is also pretty sure to
+     * cause a GPF here because shutdown_entry, being mapped 1:1, is in
+     * the lower half of the address space.  Don't use
+     * cr4_clear_bits_irqsoff() because these bits are pinned after init.
+     */
 
-	/* should not reach here */
-	while (1)
-		halt();
+    cr4 = cr4_read_shadow();
+    bitmask = X86_CR4_SMEP | X86_CR4_SMAP | X86_CR4_CET;
+
+    if (cpu_lass_support())
+    {
+        pr_debug("CPU supports LASS feature. It needs to be disabled.\n");
+        bitmask |= X86_CR4_LASS;
+    }
+
+    cr4 &= ~(bitmask);
+    asm volatile("mov %0,%%cr4": "+r" (cr4) : : "memory");
+
+    shutdown = (void(*)(void))(unsigned long)tboot->shutdown_entry;
+    shutdown();
+
+    /* should not reach here */
+    while (1)
+        halt();
 }
 
 static void tboot_copy_fadt(const struct acpi_table_fadt *fadt)
