@@ -289,4 +289,29 @@ static inline bool cpuid_amd_hygon_has_l3_cache(void)
 	return cpuid_edx(0x80000006);
 }
 
+/*
+ * cpu_lass_support(): Verify if the x86 CPU supports Linear Address Space
+ *                     Separation (LASS) feature. Use CPUID instruction
+ *                     (initial values EAX = 07H and ECX = 01H) to
+ *                     receive Enumeration Sub-leaf and parse LASS bit (bit 6)
+ *                     from the EAX register. Return True if it is set.
+ */
+
+#define EAX_LASS_BIT 6
+
+static inline bool cpu_lass_support(void)
+{
+    u32 eax = 0x7;
+    u32 ebx = 0;
+    u32 ecx = 0x1;
+    u32 edx = 0;
+
+    asm volatile("cpuid"
+                : "=a" (eax)
+                : "0" (eax), "b" (ebx), "c" (ecx), "d" (edx)
+    );
+
+    return (bool) (eax & BIT(EAX_LASS_BIT));
+}
+
 #endif /* _ASM_X86_CPUID_API_H */
